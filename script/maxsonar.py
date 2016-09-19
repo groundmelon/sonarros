@@ -10,8 +10,12 @@ if __name__ == "__main__":
 
     devname = rospy.get_param("~devname", "/dev/ttyUSB0")
     bdrate = rospy.get_param("~baudrate", 9600)
+    limit_low = rospy.get_param("~limit_low", 0.21)
+    limit_high = rospy.get_param("~limit_high", 4.0)
+    install_height = rospy.get_param("~install_height", 0.13)
 
     pub = rospy.Publisher("~height", Vector3Stamped, queue_size=10)
+    pub_raw = rospy.Publisher("~height_raw", Vector3Stamped, queue_size=10)
 
     try:
         ser = serial.Serial(port=devname, baudrate=bdrate, timeout=10)
@@ -29,12 +33,23 @@ if __name__ == "__main__":
         while not rospy.is_shutdown():
             buf = ser.read(5)
             if buf[0] == 'R':
-                height = float(int(buf[1:4]))
+                height = float(int(buf[1:4])) / 100.0
                 msg = Vector3Stamped()
                 msg.header.stamp = rospy.Time.now()
                 msg.header.frame_id = "sonar"
-                msg.vector.z = height / 100.0
-                pub.publish(msg)
+                msg.vector.z = height
+                pub_raw.publish(msg)
+
+                if height < limit_low:
+                    # too near
+                    msg.vector.z = install_height
+                    pub.publish(msg)
+                elif height > limit_high:
+                    # too far
+                    pass
+                else:
+                    # normal
+                    pub.publish(msg)
             else:
                 while not rospy.is_shutdown():
                     buf = ser.read(1)
